@@ -3,7 +3,7 @@ name = "alice-signal"
 version = "1.0.0"
 edition = "2021"
 authors = ["Moroya Sakamoto"]
-license = "MIT"
+license = "MIT OR Apache-2.0"
 description = "Pure Rust digital signal processing: FFT, FIR/IIR filters, wavelet transforms, window functions, convolution, correlation, PSD, decimation/interpolation"
 
 [lib]
