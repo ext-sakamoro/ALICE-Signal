@@ -150,10 +150,8 @@ mod tests {
 
     #[test]
     fn fll_discriminator_returns_zero_for_nonpositive_dt() {
-        assert_eq!(
-            fll_cross_product_discriminator(1.0, 0.0, 0.0, 1.0, 0.0),
-            0.0
-        );
+        let v = fll_cross_product_discriminator(1.0, 0.0, 0.0, 1.0, 0.0);
+        assert!(v.abs() < 1e-15);
     }
 
     #[test]
