@@ -25,7 +25,9 @@
 //! for GPS/QZSS L1 C/A code generation and C/N0 estimation.
 
 pub mod gnss;
+pub mod kalman;
 pub use gnss::{ca_code, estimate_cn0, normalised_correlation, Cn0Config, CA_CODE_LENGTH};
+pub use kalman::KalmanFilter;
 
 use std::f64::consts::PI;
 
