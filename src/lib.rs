@@ -3,14 +3,29 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_lossless)]
 #![allow(clippy::similar_names)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::useless_vec)]
+#![allow(clippy::manual_range_contains)]
+#![allow(clippy::missing_const_for_fn)]
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::should_panic_without_expect)]
+#![allow(clippy::suboptimal_flops)]
+#![allow(clippy::redundant_clone)]
 
 //! ALICE-Signal: Pure Rust digital signal processing library.
 //!
 //! Provides FFT (Cooley-Tukey radix-2), FIR filter design (windowed sinc),
 //! IIR filter (biquad), wavelet transform (Haar, Daubechies-4),
 //! window functions (Hamming, Hanning, Blackman), convolution, correlation,
-//! power spectral density, decimation, and interpolation.
+//! power spectral density, decimation, and interpolation, plus a `gnss` module
+//! for GPS/QZSS L1 C/A code generation and C/N0 estimation.
+
+pub mod gnss;
+pub use gnss::{ca_code, estimate_cn0, normalised_correlation, Cn0Config, CA_CODE_LENGTH};
 
 use std::f64::consts::PI;
 
