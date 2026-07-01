@@ -101,7 +101,7 @@ impl Correlator {
     #[must_use]
     pub fn correlate(&self, samples: &[f64], code_offset: usize) -> Option<CorrelatorOutput> {
         let n = self.prn.len();
-        let needed = n + self.half_chip_offset;
+        let needed = n + 2 * self.half_chip_offset;
         if samples.len() < needed {
             return None;
         }
@@ -111,12 +111,12 @@ impl Correlator {
         for i in 0..n {
             let code = f64::from(self.prn[(i + code_offset) % n]);
             let early_sample = samples[i + self.half_chip_offset];
-            let prompt_sample = samples[i];
+            let prompt_sample = samples[i + self.half_chip_offset];
             let late_sample = samples[i + 2 * self.half_chip_offset];
-            let _ = late_sample; // Kept for future asymmetric-spacing support.
-            early += code * early_sample;
+            early += code * samples[i];
             prompt += code * prompt_sample;
-            late += code * samples[(i + 2 * self.half_chip_offset).min(samples.len() - 1)];
+            late += code * late_sample;
+            let _ = early_sample;
         }
         Some(CorrelatorOutput {
             early,
@@ -145,9 +145,9 @@ mod tests {
     #[test]
     fn correlator_requires_min_sample_length() {
         let corr = Correlator::new(vec![1, -1, 1], 1);
-        // Needs at least 4 samples (code_len + offset).
-        assert!(corr.correlate(&[1.0, 1.0, 1.0], 0).is_none());
-        assert!(corr.correlate(&[1.0, 1.0, 1.0, 1.0], 0).is_some());
+        // Needs at least 5 samples (code_len + 2*offset).
+        assert!(corr.correlate(&[1.0; 4], 0).is_none());
+        assert!(corr.correlate(&[1.0; 5], 0).is_some());
     }
 
     #[test]
@@ -195,7 +195,7 @@ mod tests {
             prompt: 0.0,
             late: 1.0,
         };
-        assert_eq!(out.normalised_early_minus_late(), 0.0);
+        assert!(out.normalised_early_minus_late().abs() < 1e-12);
     }
 
     #[test]
@@ -205,7 +205,7 @@ mod tests {
             prompt: 5.0,
             late: 0.0,
         };
-        assert_eq!(out.prompt_power(), 25.0);
+        assert!((out.prompt_power() - 25.0).abs() < 1e-12);
     }
 
     #[test]
