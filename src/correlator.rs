@@ -152,25 +152,31 @@ mod tests {
 
     #[test]
     fn prompt_maximises_when_code_and_signal_align() {
-        // Synthetic signal: replicate the PRN as ±1 samples with extra tail
-        // so the Early/Prompt/Late window has room.
+        // Build a sample buffer where samples[h + i] == code[i], so the
+        // Prompt tap (which starts at offset h) sees perfect alignment.
         let code = ca_code(1).unwrap();
-        let mut samples: Vec<f64> = code.iter().map(|&c| f64::from(c)).collect();
-        // Extend the buffer so Early/Late taps have data.
-        samples.push(samples[0]);
-        samples.push(samples[1]);
+        let h = 1;
+        let mut samples = vec![0.0_f64; CA_CODE_LENGTH + 2 * h];
+        for i in 0..CA_CODE_LENGTH {
+            samples[i + h] = f64::from(code[i]);
+        }
         let corr = make_ca_correlator(code);
         let out = corr.correlate(&samples, 0).unwrap();
-        // At alignment the prompt sum is code_len (all products = 1).
+        // Prompt sum = code_len (all products = 1).
         assert!((out.prompt - CA_CODE_LENGTH as f64).abs() < 1.0);
+        // Early and Late are decorrelated by the ±h chip shift.
+        assert!(out.prompt.abs() > out.early.abs());
+        assert!(out.prompt.abs() > out.late.abs());
     }
 
     #[test]
     fn misalignment_reduces_prompt() {
         let code = ca_code(1).unwrap();
-        let mut samples: Vec<f64> = code.iter().map(|&c| f64::from(c)).collect();
-        samples.push(samples[0]);
-        samples.push(samples[1]);
+        let h = 1;
+        let mut samples = vec![0.0_f64; CA_CODE_LENGTH + 2 * h];
+        for i in 0..CA_CODE_LENGTH {
+            samples[i + h] = f64::from(code[i]);
+        }
         let corr = make_ca_correlator(code);
         let aligned = corr.correlate(&samples, 0).unwrap().prompt.abs();
         let misaligned = corr.correlate(&samples, 100).unwrap().prompt.abs();
