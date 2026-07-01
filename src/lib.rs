@@ -27,9 +27,11 @@
 pub mod correlator;
 pub mod gnss;
 pub mod kalman;
+pub mod tracking;
 pub use correlator::{make_ca_correlator, Correlator, CorrelatorOutput};
 pub use gnss::{ca_code, estimate_cn0, normalised_correlation, Cn0Config, CA_CODE_LENGTH};
 pub use kalman::KalmanFilter;
+pub use tracking::{fll_cross_product_discriminator, pll_costas_discriminator, SecondOrderLoop};
 
 use std::f64::consts::PI;
 
