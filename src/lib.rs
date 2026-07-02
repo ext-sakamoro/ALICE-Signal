@@ -24,9 +24,12 @@
 //! power spectral density, decimation, and interpolation, plus a `gnss` module
 //! for GPS/QZSS L1 C/A code generation and C/N0 estimation.
 
+pub mod batch_verify;
 pub mod correlator;
+pub mod ekf;
 pub mod gnss;
 pub mod kalman;
+pub mod spoofing;
 pub mod tracking;
 pub use correlator::{make_ca_correlator, Correlator, CorrelatorOutput};
 pub use gnss::{ca_code, estimate_cn0, normalised_correlation, Cn0Config, CA_CODE_LENGTH};
