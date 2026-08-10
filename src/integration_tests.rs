@@ -19,8 +19,6 @@ use crate::wavelet::*;
 use crate::windows::*;
 use std::f64::consts::PI;
 
-use super::*;
-
 const EPS: f64 = 1e-10;
 const EPS_LOOSE: f64 = 1e-6;
 
