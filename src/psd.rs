@@ -8,7 +8,12 @@ use crate::fft::*;
 
 /// Estimate the power spectral density using the periodogram method.
 ///
-/// Returns `N/2 + 1` values (one-sided PSD for real input).
+/// Returns `N/2 + 1` values (one-sided PSD for real input): `|X_k|²/N`,
+/// with the interior bins `1 ..= N/2 − 1` doubled so that the one-sided
+/// spectrum carries the full signal power, `Σ psd = Σ x²` (Parseval).  A
+/// tone of amplitude `A` on bin `k` reads `A²N/2`.  Until 2026-09-17 the
+/// interior bins were not doubled and the one-sided sum was half the power
+/// (oracle `tests/analytic_oracle.rs`).
 ///
 /// # Panics
 ///
@@ -23,7 +28,12 @@ pub fn psd(signal: &[f64]) -> Vec<f64> {
 
     let half = n / 2 + 1;
     let scale = 1.0 / n as f64;
-    (0..half).map(|i| buf[i].mag_sq() * scale).collect()
+    (0..half)
+        .map(|i| {
+            let one_sided = if i == 0 || i == n / 2 { 1.0 } else { 2.0 };
+            buf[i].mag_sq() * scale * one_sided
+        })
+        .collect()
 }
 
 /// Estimate PSD with a window applied before FFT.
