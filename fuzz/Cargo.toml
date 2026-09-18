@@ -1,0 +1,38 @@
+[package]
+name = "alice-signal-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+[dependencies.alice-signal]
+path = ".."
+features = []
+
+# cargo-machete false-positive 予防 (canonical [[reference_alice_ci_canonical_template]] 罠 #3)
+[package.metadata.cargo-machete]
+ignored = ["libfuzzer-sys"]
+
+[[bin]]
+name = "fuzz_dsp"
+path = "fuzz_targets/fuzz_dsp.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_gnss"
+path = "fuzz_targets/fuzz_gnss.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_kalman"
+path = "fuzz_targets/fuzz_kalman.rs"
+doc = false
+
+[workspace]
+members = ["."]

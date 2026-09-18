@@ -20,26 +20,138 @@ relint() { git ls-files | grep -E '(^|/)src/(lib|main)\.rs$' | xargs -r touch; }
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing tool: $1 ($2)" >&2; exit 1; }; }
 has_toolchain() { rustup toolchain list | grep -q "^$1"; }
 
+# Steps CI runs that this file cannot reproduce locally (they can only fail remotely):
+#   - security-audit.yml:audit:Install cargo-audit (needs network / runner-only)
+#   - security-audit.yml:deny:Install cargo-deny (needs network / runner-only)
+#   - security-audit.yml:coverage (job is continue-on-error: informational in CI)
+#   - security-audit.yml:semver-checks (job is continue-on-error: informational in CI)
+#   - fuzz.yml:fuzz:Install cargo-fuzz (needs network / runner-only)
+#   - fuzz.yml:fuzz:Build fuzz target (needs network / runner-only)
+#   - fuzz.yml:fuzz:Set fuzz duration (no cargo / grep)
+#   - fuzz.yml:fuzz:Run fuzz target (time-boxed) (continue-on-error)
+#   - fuzz.yml:fuzz:Report crash (informational) (no cargo / grep)
+
 need actionlint "brew install actionlint"
+need cargo-audit "cargo install cargo-audit --locked"
+need cargo-deny "cargo install cargo-deny --locked"
+need cargo-machete "cargo install cargo-machete --locked"
+has_toolchain 1.87 || { echo "missing toolchain 1.87 (rustup toolchain install 1.87)" >&2; exit 1; }
 
-step "ci.yml / fmt: Check formatting"
-( export CARGO_TERM_COLOR="always"; cargo fmt -- --check )
+step "ci.yml / fmt: run"
+( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo fmt --all -- --check )
 
-step "ci.yml / test: Clippy"
+step "ci.yml / clippy: run"
 relint
-( export CARGO_TERM_COLOR="always"; cargo clippy --all-targets -- -D warnings )
+( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo clippy --all-targets -- -D warnings )
+
+step "ci.yml / msrv: run"
+( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo +1.87 check --lib )
+
+step "ci.yml / doc: run"
+( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short" RUSTDOCFLAGS="-Dwarnings"; cargo doc --no-deps )
 
 step "ci.yml / actionlint: actionlint"
 actionlint .github/workflows/*.yml
+
+step "security-audit.yml / deny: Run cargo deny check all"
+( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"; cargo deny --all-features check all )
+
+step "security-audit.yml / unused-deps: cargo machete"
+cargo machete
+
+step "security-audit.yml / stub-guard: Block panic!(STUB) in src/**"
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
+  set -eo pipefail
+  hits=$(grep -rnE 'panic!\([^)]*STUB' \
+    src/ --include="*.rs" \
+    --exclude-dir=bin \
+    | grep -v ':[[:space:]]*//' \
+    | grep -vE ':[[:space:]]*/\*' \
+    || true)
+  if [ -n "$hits" ]; then
+    echo "❌ Explicit STUB panic detected in src/ (production path):"
+    echo "$hits"
+    exit 1
+  fi
+  echo "✓ No panic!(STUB) in src/"
+)
+
+step "security-audit.yml / stub-guard: Detect todo! / unimplemented! (informational, not blocking)"
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
+  set -eo pipefail
+  hits=$(grep -rnE 'todo!\(|unimplemented!\(' \
+    src/ --include="*.rs" \
+    --exclude-dir=bin \
+    | grep -v ':[[:space:]]*//' \
+    | grep -vE ':[[:space:]]*/\*' \
+    || true)
+  if [ -n "$hits" ]; then
+    count=$(echo "$hits" | wc -l | tr -d ' ')
+    echo "::warning::${count} todo!()/unimplemented!() marker(s) in src/ (informational, CLAUDE.md legitimate fail-fast idiom):"
+    echo "$hits" | head -20
+  else
+    echo "✓ No todo!/unimplemented! markers in src/"
+  fi
+)
+
+step "security-audit.yml / stub-guard: Detect dbg!() residual in src/**"
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
+  set -eo pipefail
+  hits=$(grep -rn 'dbg!(' src/ --include="*.rs" || true)
+  if [ -n "$hits" ]; then
+    echo "❌ dbg!() macro left in src/:"
+    echo "$hits"
+    exit 1
+  fi
+  echo "✓ No dbg!() in src/"
+)
+
+step "security-audit.yml / stub-guard: Detect TODO / FIXME / XXX / HACK (informational)"
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
+  set -eo pipefail
+  hits=$(grep -rnE 'TODO|FIXME|XXX|HACK' src/ --include="*.rs" || true)
+  if [ -n "$hits" ]; then
+    echo "::warning::TODO/FIXME/XXX/HACK found in src/ (informational, not blocking):"
+    echo "$hits" | head -50
+  else
+    echo "✓ No TODO/FIXME/XXX/HACK in src/"
+  fi
+)
+
+step "fuzz.yml / build every fuzz target (nightly; the replay needs the runner)"
+if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
+  (cd fuzz && cargo +nightly fuzz build)
+else
+  echo "skip: nightly / cargo-fuzz not installed" >&2
+fi
 
 if [[ $quick -eq 1 ]]; then
   echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0
 fi
 
 step "ci.yml / test: Test"
-( export CARGO_TERM_COLOR="always"; cargo test )
+( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo test )
 
 step "ci.yml / test: Analytic oracle"
-( export CARGO_TERM_COLOR="always"; cargo test --test analytic_oracle )
+( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo test --test analytic_oracle )
+
+step "ci.yml / test: Doc tests"
+( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo test --doc )
+
+step "security-audit.yml / audit: Run cargo audit"
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
+  cargo audit --deny yanked \
+    --ignore RUSTSEC-2024-0436 \
+    --ignore RUSTSEC-2025-0020 \
+    --ignore RUSTSEC-2026-0176 \
+    --ignore RUSTSEC-2026-0177 \
+    --ignore RUSTSEC-2026-0204 \
+    --ignore RUSTSEC-2026-0235
+)
 
 echo; echo "preflight OK"

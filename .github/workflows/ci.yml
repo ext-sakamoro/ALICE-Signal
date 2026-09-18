@@ -1,13 +1,23 @@
 name: CI
 
+# canonical CI template: [[reference_alice_ci_canonical_template]] (ALICE-SDF base)
+# 2026-09-18 ALICE-Signal 用: fmt / clippy -D / test 3 OS + analytic oracle / msrv 実 compile /
+# doc -D warnings / actionlint (feature なし crate のため powerset job は無し)
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: short
 
 jobs:
   fmt:
@@ -18,11 +28,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Check formatting
-        run: cargo fmt -- --check
+      - run: cargo fmt --all -- --check
 
-  test:
-    name: Test + Clippy
+  clippy:
+    name: Clippy (-D warnings)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -30,12 +39,47 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: Test — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test
+      # 解析解 oracle (tests/analytic_oracle.rs、CLAUDE.md § 解析解突合テスト規律)
       - name: Analytic oracle
         run: cargo test --test analytic_oracle
+      - name: Doc tests
+        run: cargo test --doc
+
+  msrv:
+    name: MSRV (rust-version = 1.87 実 compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # 宣言値と同じ toolchain: Cargo.toml の rust-version を bump したら同 commit で @<version> も更新
+      - uses: dtolnay/rust-toolchain@1.87
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --lib
+
+  doc:
+    name: Doc (RUSTDOCFLAGS=-Dwarnings)
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --no-deps
 
   actionlint:
     name: actionlint (workflow YAML 検証)
@@ -47,4 +91,3 @@ jobs:
         with:
           fail_level: error
           reporter: github-check
-

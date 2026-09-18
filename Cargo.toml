@@ -2,8 +2,13 @@
 name = "alice-signal"
 version = "1.5.0"
 edition = "2021"
+rust-version = "1.87"  # `is_multiple_of` (1.87)、CI msrv job で実 compile
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/ext-sakamoro/ALICE-Signal"
+readme = "README.md"
+keywords = ["dsp", "fft", "filter", "wavelet", "gnss"]
+categories = ["science", "algorithms", "mathematics"]
 description = "Pure Rust digital signal processing: FFT, FIR/IIR filters, wavelet transforms, window functions, convolution, correlation, PSD, decimation/interpolation; GNSS EKF, spoofing detector, Ed25519 batch verification"
 
 [lib]
