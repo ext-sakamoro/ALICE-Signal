@@ -18,9 +18,15 @@ use core::f64::consts::TAU;
 
 const SR: f64 = 8192.0;
 
-/// Settings matched to `SR`: ~0.125 s window, 50% overlap, ~1 s local average.
+/// Settings matched to `SR`: ~0.125 s window, 15.6 ms hop, ~1 s local average.
+///
+/// The hop is what sets the time resolution of the envelope, and a tempo search
+/// needs several frames per beat to tell a period from its double. At 200 BPM
+/// this gives 19 frames per beat; a 62.5 ms hop would give under 5, and a
+/// 150 BPM train then reads as 75 because the double lag lines up better with
+/// the frame grid than the true one does.
 fn cfg() -> OnsetConfig {
-    OnsetConfig::try_new(1024, 512, 16, 0.8, 60.0, 200.0).unwrap()
+    OnsetConfig::try_new(1024, 128, 64, 0.8, 0.01, 60.0, 200.0).unwrap()
 }
 
 fn assert_rel(actual: f64, expected: f64, tol: f64, what: &str) {
@@ -88,17 +94,41 @@ fn silence_produces_no_flux() {
 }
 
 #[test]
-fn a_steady_tone_produces_no_flux_once_it_is_running() {
-    // Oracle: a sinusoid that never changes has the same magnitude spectrum in
-    // every frame, so the half-wave rectified difference is zero. Only the first
-    // frames, where the analysis window still straddles the start, can differ --
-    // here the signal starts at sample 0, so every frame is inside the tone.
-    let env = spectral_flux(&tone(2.0, 440.0, 0.5), SR, &cfg()).unwrap();
-    let peak = env.flux.iter().fold(0.0_f64, |a, b| a.max(*b));
-    let total: f64 = env.flux.iter().sum();
+fn a_steady_tone_is_orders_of_magnitude_quieter_than_a_real_onset() {
+    // Oracle: a sustained sinusoid adds no new energy, so its flux is bounded by
+    // how much the magnitude spectrum wobbles as the window slides across it --
+    // spectral leakage, not a note starting.
+    //
+    // It is NOT exactly zero. A 440 Hz tone at 8192 Hz has a period of 18.6
+    // samples, so a 128-sample hop never lands on a whole number of cycles and
+    // the leakage pattern differs slightly every frame. The physical claim that
+    // can be asserted is therefore a ratio, not an equality: the loudest thing a
+    // steady tone can produce must be far below what starting that same tone
+    // produces. Measured against the frame's own spectral magnitude, leakage
+    // sits near 1e-4 and an onset near 1.
+    let c = cfg();
+    let steady = spectral_flux(&tone(2.0, 440.0, 0.5), SR, &c).unwrap();
+    let steady_peak = steady
+        .flux
+        .iter()
+        .zip(&steady.magnitude)
+        .map(|(f, m)| f / m)
+        .fold(0.0_f64, f64::max);
+
+    let mut switched = silence(0.5);
+    switched.extend(tone(1.5, 440.0, 0.5));
+    let onset = spectral_flux(&switched, SR, &c).unwrap();
+    let onset_peak = onset
+        .flux
+        .iter()
+        .zip(&onset.magnitude)
+        .map(|(f, m)| if *m > 0.0 { f / m } else { 0.0 })
+        .fold(0.0_f64, f64::max);
+
     assert!(
-        peak < 1e-9,
-        "a steady tone should not look like an onset: peak flux {peak:.3e}, total {total:.3e}"
+        steady_peak * 100.0 < onset_peak,
+        "a steady tone must be at least 100x quieter than the same tone starting: \
+         steady {steady_peak:.3e}, onset {onset_peak:.3e}"
     );
 }
 
@@ -135,14 +165,18 @@ fn a_tone_switched_on_is_detected_at_the_constructed_time() {
 #[test]
 fn every_click_in_a_train_is_counted_once() {
     // Oracle: the construction. 4 seconds at 120 BPM is 2 beats per second, so 8
-    // clicks, the first at t = 0.
+    // clicks. A quarter second of silence is put in front because the very first
+    // click would otherwise sit in frame 0, which by the documented contract has
+    // no flux -- see `an_onset_inside_the_first_frame_cannot_be_seen`.
     let bpm = 120.0;
     let seconds = 4.0;
     let expected = (seconds * bpm / 60.0) as usize;
     assert_eq!(expected, 8, "the arithmetic of the construction itself");
 
     let c = cfg();
-    let env = spectral_flux(&click_train(seconds, bpm, 0.8), SR, &c).unwrap();
+    let mut signal = silence(0.25);
+    signal.extend(click_train(seconds, bpm, 0.8));
+    let env = spectral_flux(&signal, SR, &c).unwrap();
     let onsets = pick_onsets(&env, SR, &c);
 
     assert_eq!(
@@ -150,6 +184,69 @@ fn every_click_in_a_train_is_counted_once() {
         expected,
         "expected {expected} clicks, detected {} at {onsets:?}",
         onsets.len()
+    );
+}
+
+#[test]
+fn an_onset_inside_the_first_frame_cannot_be_seen() {
+    // Oracle: the documented contract of `OnsetEnvelope::flux`. Flux measures
+    // what appeared since the previous frame, and frame 0 has no previous frame,
+    // so a sound that is already there at t = 0 leaves no trace. This is a real
+    // limit of any difference-based detector, not a tuning problem: it is pinned
+    // here so that a later change cannot quietly turn it into a spurious onset
+    // at the start of every recording.
+    let c = cfg();
+    let env = spectral_flux(&tone(2.0, 440.0, 0.5), SR, &c).unwrap();
+    assert!(
+        env.flux[0] == 0.0,
+        "frame 0 must carry no flux, got {}",
+        env.flux[0]
+    );
+    assert!(
+        pick_onsets(&env, SR, &c).is_empty(),
+        "a tone present from t = 0 has no detectable onset"
+    );
+}
+
+#[test]
+fn a_note_change_at_constant_energy_is_still_an_onset() {
+    // Oracle: physics, and the reason the flux is half-wave rectified.
+    //
+    // One tone stops and another of the same amplitude starts at the same
+    // instant. The total energy in the frame does not change, so the *signed*
+    // difference of the spectra sums to about zero -- the bins that emptied
+    // cancel the bins that filled. Only the rectified difference, which keeps
+    // what appeared and discards what left, still sees a note beginning.
+    //
+    // Without rectification this instant is invisible, so this test is what
+    // makes `.max(0.0)` in the flux load-bearing.
+    let c = cfg();
+    let mut signal = tone(1.0, 440.0, 0.5);
+    signal.extend(tone(1.0, 660.0, 0.5));
+    let env = spectral_flux(&signal, SR, &c).unwrap();
+
+    let change_frame = (1.0 * env.frame_rate) as usize;
+    let at_change = env.flux[change_frame - 2..=change_frame + 2]
+        .iter()
+        .fold(0.0_f64, |a, b| a.max(*b));
+    let elsewhere = env.flux[..change_frame - 8]
+        .iter()
+        .fold(0.0_f64, |a, b| a.max(*b));
+
+    assert!(
+        at_change > 50.0 * elsewhere,
+        "the note change must stand out from the steady part: {at_change:.3e} vs {elsewhere:.3e}"
+    );
+    let onsets = pick_onsets(&env, SR, &c);
+    assert_eq!(
+        onsets.len(),
+        1,
+        "exactly one note change was constructed, detected {onsets:?}"
+    );
+    assert!(
+        (onsets[0] - 1.0).abs() <= 2.0 * c.hop() as f64 / SR,
+        "note change detected at {:.4} s, constructed at 1.0 s",
+        onsets[0]
     );
 }
 
@@ -210,7 +307,7 @@ fn a_silent_signal_has_no_tempo() {
 #[test]
 fn a_window_that_is_not_a_power_of_two_is_rejected() {
     assert_eq!(
-        OnsetConfig::try_new(1000, 500, 16, 0.8, 60.0, 200.0).unwrap_err(),
+        OnsetConfig::try_new(1000, 500, 16, 0.8, 0.01, 60.0, 200.0).unwrap_err(),
         OnsetError::WindowNotPowerOfTwo
     );
 }
@@ -218,11 +315,11 @@ fn a_window_that_is_not_a_power_of_two_is_rejected() {
 #[test]
 fn a_hop_larger_than_the_window_is_rejected() {
     assert_eq!(
-        OnsetConfig::try_new(1024, 2048, 16, 0.8, 60.0, 200.0).unwrap_err(),
+        OnsetConfig::try_new(1024, 2048, 16, 0.8, 0.01, 60.0, 200.0).unwrap_err(),
         OnsetError::HopInvalid
     );
     assert_eq!(
-        OnsetConfig::try_new(1024, 0, 16, 0.8, 60.0, 200.0).unwrap_err(),
+        OnsetConfig::try_new(1024, 0, 16, 0.8, 0.01, 60.0, 200.0).unwrap_err(),
         OnsetError::HopInvalid
     );
 }
@@ -230,7 +327,7 @@ fn a_hop_larger_than_the_window_is_rejected() {
 #[test]
 fn an_empty_tempo_range_is_rejected() {
     assert_eq!(
-        OnsetConfig::try_new(1024, 512, 16, 0.8, 200.0, 60.0).unwrap_err(),
+        OnsetConfig::try_new(1024, 512, 16, 0.8, 0.01, 200.0, 60.0).unwrap_err(),
         OnsetError::TempoRangeInvalid
     );
 }

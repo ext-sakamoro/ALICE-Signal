@@ -14,6 +14,7 @@ Pure Rust digital signal processing library for the ALICE ecosystem. Zero extern
 - **Convolution & Correlation** -- Linear convolution and cross-correlation
 - **Spectral Analysis** -- Power spectral density (PSD) with optional windowing
 - **Resampling** -- Decimation, zero-insertion interpolation, linear interpolation
+- **Onset & Tempo** -- Half-wave rectified spectral flux, adaptive peak picking with a relative floor, and tempo by autocorrelation of the envelope (60-200 BPM, parabolic refinement)
 - **Utilities** -- Energy, RMS, zero-padding to power-of-two, complex number type
 
 ## Architecture

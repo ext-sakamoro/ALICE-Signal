@@ -35,6 +35,8 @@ pub enum OnsetError {
     TempoRangeInvalid,
     /// The threshold offset was not finite, or was negative.
     ThresholdInvalid,
+    /// The relative floor was not finite, or was outside `0.0 ..= 1.0`.
+    RelativeFloorInvalid,
     /// The sample rate was not finite and positive.
     SampleRateInvalid,
     /// The signal was shorter than one analysis window.
@@ -55,6 +57,7 @@ pub struct OnsetConfig {
     hop: usize,
     median_span: usize,
     threshold_delta: f64,
+    relative_floor: f64,
     min_bpm: f64,
     max_bpm: f64,
 }
@@ -66,6 +69,17 @@ impl OnsetConfig {
     /// over, and `threshold_delta` how far above that average a frame must rise
     /// to count as an onset, in units of the flux standard deviation.
     ///
+    /// `relative_floor` is the second half of the test, and the one that keeps a
+    /// steady sound quiet. A threshold built out of the curve's own mean and
+    /// spread is self-referential: it finds peaks in *any* curve that is not
+    /// exactly flat, including one that only wobbles because the analysis window
+    /// lands on a different part of a sustained tone each frame. A peak must
+    /// therefore also carry this fraction of the frame's total spectral
+    /// magnitude, which separates "energy appeared" from "energy is present":
+    /// a note starting contributes an appreciable share of the frame, leakage
+    /// contributes about `1e-4` of it. Both quantities scale with the signal, so
+    /// the test stays independent of how loud the recording is.
+    ///
     /// # Errors
     /// [`OnsetError::WindowNotPowerOfTwo`], [`OnsetError::HopInvalid`],
     /// [`OnsetError::MedianSpanInvalid`], [`OnsetError::ThresholdInvalid`] or
@@ -75,6 +89,7 @@ impl OnsetConfig {
         hop: usize,
         median_span: usize,
         threshold_delta: f64,
+        relative_floor: f64,
         min_bpm: f64,
         max_bpm: f64,
     ) -> Result<Self, OnsetError> {
@@ -90,6 +105,9 @@ impl OnsetConfig {
         if !threshold_delta.is_finite() || threshold_delta < 0.0 {
             return Err(OnsetError::ThresholdInvalid);
         }
+        if !relative_floor.is_finite() || !(0.0..=1.0).contains(&relative_floor) {
+            return Err(OnsetError::RelativeFloorInvalid);
+        }
         if !min_bpm.is_finite() || !max_bpm.is_finite() || min_bpm <= 0.0 || max_bpm <= min_bpm {
             return Err(OnsetError::TempoRangeInvalid);
         }
@@ -98,6 +116,7 @@ impl OnsetConfig {
             hop,
             median_span,
             threshold_delta,
+            relative_floor,
             min_bpm,
             max_bpm,
         })
@@ -105,13 +124,15 @@ impl OnsetConfig {
 
     /// Settings that work on music at ordinary sample rates.
     ///
-    /// A 1024-sample window with 50% overlap, a local average over about a
-    /// second of frames, and a 60-200 BPM search.
+    /// A 1024-sample window hopped every 128 samples, a local average over
+    /// about a second of frames at 44.1 kHz, and a 60-200 BPM search. The hop
+    /// sets the time resolution of the envelope, and a tempo search needs
+    /// several frames per beat to tell a period from its double.
     ///
     /// # Errors
     /// Cannot fail; the signature stays fallible so callers keep one code path.
     pub fn preset_music() -> Result<Self, OnsetError> {
-        Self::try_new(1024, 512, 43, 0.8, 60.0, 200.0)
+        Self::try_new(1024, 128, 86, 0.8, 0.01, 60.0, 200.0)
     }
 
     /// Analysis window length in samples.
@@ -138,6 +159,12 @@ impl OnsetConfig {
         self.threshold_delta
     }
 
+    /// Share of a frame's total spectral magnitude a peak must also carry.
+    #[must_use]
+    pub const fn relative_floor(self) -> f64 {
+        self.relative_floor
+    }
+
     /// Slowest tempo searched.
     #[must_use]
     pub const fn min_bpm(self) -> f64 {
@@ -160,6 +187,11 @@ pub struct OnsetEnvelope {
     /// One value per analysis frame. The first is always zero: nothing has
     /// appeared yet when there is no previous frame to compare against.
     pub flux: Vec<f64>,
+    /// Total spectral magnitude of each frame, in the same units as `flux`.
+    ///
+    /// The scale a flux value has to be judged against: it says how much sound
+    /// is there, where `flux` says how much of it is new.
+    pub magnitude: Vec<f64>,
     /// Frames per second, which is `sample_rate / hop`.
     pub frame_rate: f64,
 }
@@ -177,17 +209,87 @@ impl OnsetEnvelope {
 /// # Errors
 /// [`OnsetError::SampleRateInvalid`] or [`OnsetError::SignalTooShort`].
 pub fn spectral_flux(
-    _signal: &[f64],
-    _sample_rate: f64,
-    _cfg: &OnsetConfig,
+    signal: &[f64],
+    sample_rate: f64,
+    cfg: &OnsetConfig,
 ) -> Result<OnsetEnvelope, OnsetError> {
-    todo!("spectral_flux not implemented")
+    if !sample_rate.is_finite() || sample_rate <= 0.0 {
+        return Err(OnsetError::SampleRateInvalid);
+    }
+    if signal.len() < cfg.window {
+        return Err(OnsetError::SignalTooShort);
+    }
+
+    let window = hanning(cfg.window);
+    let frames = (signal.len() - cfg.window) / cfg.hop + 1;
+    let mut flux = Vec::with_capacity(frames);
+    let mut totals = Vec::with_capacity(frames);
+    let mut previous: Option<Vec<f64>> = None;
+
+    for frame in 0..frames {
+        let start = frame * cfg.hop;
+        // Power per bin from the one Fourier law this crate has; the square root
+        // puts it back in amplitude, which is what flux is conventionally in.
+        let magnitude: Vec<f64> = psd_windowed(&signal[start..start + cfg.window], &window)
+            .iter()
+            .map(|power| power.sqrt())
+            .collect();
+
+        let value = previous.as_ref().map_or(0.0, |prev| {
+            magnitude
+                .iter()
+                .zip(prev)
+                .map(|(now, before)| (now - before).max(0.0))
+                .sum()
+        });
+        flux.push(value);
+        totals.push(magnitude.iter().sum());
+        previous = Some(magnitude);
+    }
+
+    Ok(OnsetEnvelope {
+        flux,
+        magnitude: totals,
+        frame_rate: sample_rate / cfg.hop as f64,
+    })
 }
 
 /// Times in seconds of the flux peaks that stand out from their neighbourhood.
 #[must_use]
-pub fn pick_onsets(_envelope: &OnsetEnvelope, _sample_rate: f64, _cfg: &OnsetConfig) -> Vec<f64> {
-    todo!("pick_onsets not implemented")
+pub fn pick_onsets(envelope: &OnsetEnvelope, sample_rate: f64, cfg: &OnsetConfig) -> Vec<f64> {
+    let flux = &envelope.flux;
+    let n = flux.len();
+    if n < 3 {
+        return Vec::new();
+    }
+
+    let mean = flux.iter().sum::<f64>() / n as f64;
+    let deviation = (flux.iter().map(|f| (f - mean) * (f - mean)).sum::<f64>() / n as f64).sqrt();
+    // A curve with no spread has no peaks that stand out, however large it is.
+    if deviation <= 0.0 {
+        return Vec::new();
+    }
+
+    let half = cfg.median_span / 2;
+    let mut onsets = Vec::new();
+    for i in 1..n - 1 {
+        let lo = i.saturating_sub(half);
+        let hi = (i + half + 1).min(n);
+        let local = flux[lo..hi].iter().sum::<f64>() / (hi - lo) as f64;
+        let threshold = cfg.threshold_delta.mul_add(deviation, local);
+        // The relative floor is what stops the self-referential part of the
+        // threshold from finding onsets in a sound that never starts anything.
+        let floor = cfg.relative_floor * envelope.magnitude[i];
+        // `>=` on the left and `>` on the right so a plateau is reported once.
+        if flux[i] > threshold
+            && flux[i] >= floor
+            && flux[i] >= flux[i - 1]
+            && flux[i] > flux[i + 1]
+        {
+            onsets.push(envelope.frame_time(i, cfg.window, sample_rate));
+        }
+    }
+    onsets
 }
 
 /// The tempo in beats per minute the envelope most resembles itself at.
@@ -195,6 +297,66 @@ pub fn pick_onsets(_envelope: &OnsetEnvelope, _sample_rate: f64, _cfg: &OnsetCon
 /// `None` when the envelope is too short to hold one period of the slowest
 /// tempo searched, or when it carries no energy at all.
 #[must_use]
-pub fn estimate_tempo(_envelope: &OnsetEnvelope, _cfg: &OnsetConfig) -> Option<f64> {
-    todo!("estimate_tempo not implemented")
+pub fn estimate_tempo(envelope: &OnsetEnvelope, cfg: &OnsetConfig) -> Option<f64> {
+    let flux = &envelope.flux;
+    let n = flux.len();
+    if n < 4 {
+        return None;
+    }
+
+    // Centring the curve first, so that the constant part of the envelope does
+    // not make every lag look correlated.
+    let mean = flux.iter().sum::<f64>() / n as f64;
+    let centred: Vec<f64> = flux.iter().map(|f| f - mean).collect();
+    if centred.iter().map(|c| c * c).sum::<f64>() <= 0.0 {
+        return None;
+    }
+
+    let autocorrelation = |lag: usize| -> f64 {
+        centred[lag..]
+            .iter()
+            .zip(&centred[..n - lag])
+            .map(|(a, b)| a * b)
+            .sum()
+    };
+
+    let min_lag = (60.0 / cfg.max_bpm * envelope.frame_rate).floor().max(1.0) as usize;
+    let max_lag = ((60.0 / cfg.min_bpm * envelope.frame_rate).ceil() as usize).min(n / 2);
+    if max_lag <= min_lag {
+        return None;
+    }
+
+    // The sum is deliberately not divided by the overlap length. A periodic
+    // envelope correlates with itself at every multiple of its period, and
+    // leaving the sums unnormalised makes the shorter lag -- the real one --
+    // win, because more terms overlap there.
+    let mut best_lag = min_lag;
+    let mut best_value = autocorrelation(min_lag);
+    for lag in min_lag + 1..=max_lag {
+        let value = autocorrelation(lag);
+        if value > best_value {
+            best_value = value;
+            best_lag = lag;
+        }
+    }
+    if best_value <= 0.0 {
+        return None;
+    }
+
+    // The true period rarely lands on a whole frame, so take the vertex of the
+    // parabola through the peak and its two neighbours.
+    let refined = if best_lag > min_lag && best_lag < max_lag {
+        let before = autocorrelation(best_lag - 1);
+        let after = autocorrelation(best_lag + 1);
+        let curvature = (before - 2.0 * best_value) + after;
+        if curvature.abs() > f64::EPSILON {
+            0.5f64.mul_add((before - after) / curvature, best_lag as f64)
+        } else {
+            best_lag as f64
+        }
+    } else {
+        best_lag as f64
+    };
+
+    Some(60.0 * envelope.frame_rate / refined)
 }
