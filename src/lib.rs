@@ -43,6 +43,7 @@ pub mod fir;
 pub mod gnss;
 pub mod iir;
 pub mod kalman;
+pub mod onset;
 pub mod prelude;
 pub mod psd;
 pub mod spoofing;
