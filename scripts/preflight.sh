@@ -154,4 +154,23 @@ step "security-audit.yml / audit: Run cargo audit"
     --ignore RUSTSEC-2026-0235
 )
 
+step "ci.yml / test-public-siblings: Test (lib, integration, doctests)"
+(
+  set -o pipefail
+  MIN_PASSED=207
+  log="$(mktemp)"
+  cargo test --all-features 2>&1 | tee "${log}"
+  passed=$(grep -E '^test result: ' "${log}" | awk '{s += $4} END {print s + 0}')
+  failed=$(grep -E '^test result: ' "${log}" | awk '{s += $6} END {print s + 0}')
+  echo "passed: ${passed} (minimum ${MIN_PASSED}), failed: ${failed}"
+  if [ "${failed}" -ne 0 ] || grep -E '^test result: ' "${log}" | grep -vE '^test result: ok\. ' >/dev/null; then
+    echo "::error::${failed} tests failed"
+    exit 1
+  fi
+  if [ "${passed}" -lt "${MIN_PASSED}" ]; then
+    echo "::error::${passed} tests passed, fewer than ${MIN_PASSED}"
+    exit 1
+  fi
+)
+
 echo; echo "preflight OK"
