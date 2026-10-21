@@ -9,8 +9,7 @@
 //!
 //! This module implements a discrete-time, half-chip spacing correlator that
 //! consumes a `PRN` code from [`crate::gnss`] and an incoming baseband
-//! sample buffer. It is designed for `QZSS` L1 C/A monitoring in SPACID's
-//! authenticity checks.
+//! sample buffer. It is designed for `QZSS` L1 C/A signal monitoring.
 
 use crate::gnss::CA_CODE_LENGTH;
 

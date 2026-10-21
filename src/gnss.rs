@@ -2,7 +2,7 @@
 //! primitives.
 //!
 //! Two operations here bridge the generic DSP layer with concrete satellite
-//! navigation use cases (SPACID's `QZSS` authenticity checks in particular):
+//! navigation use cases (`QZSS` in particular):
 //!
 //! - `PRN` code generation for GPS L1 C/A (Gold codes over 10-bit LFSRs),
 //!   which are shared by GPS and `QZSS` L1 C/A.
