@@ -1,5 +1,5 @@
 //! Analytic oracles — closed-form checks for the DSP / GNSS laws in
-//! ALICE-Signal (CLAUDE.md § 解析解突合テスト規律, 2026-09-17).
+//! ALICE-Signal (解析解と突き合わせる試験, 2026-09-17).
 //!
 //! Expected values come from closed forms, published tables or an independent
 //! reference written in this file (naive O(N²) DFT), never from the crate

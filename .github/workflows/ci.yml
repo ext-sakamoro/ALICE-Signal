@@ -1,6 +1,6 @@
 name: CI
 
-# canonical CI template: [[reference_alice_ci_canonical_template]] (ALICE-SDF base)
+# 標準の CI の型 (ALICE-SDF と同じ形)
 # 2026-09-18 ALICE-Signal 用: fmt / clippy -D / test 3 OS + analytic oracle / msrv 実 compile /
 # doc -D warnings / actionlint (feature なし crate のため powerset job は無し)
 
@@ -54,7 +54,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test
-      # 解析解 oracle (tests/analytic_oracle.rs、CLAUDE.md § 解析解突合テスト規律)
+      # 解析解 oracle (tests/analytic_oracle.rs、解析解と突き合わせる試験)
       - name: Analytic oracle
         run: cargo test --test analytic_oracle
       - name: Doc tests

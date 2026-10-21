@@ -15,7 +15,7 @@ arbitrary = { version = "1", features = ["derive"] }
 path = ".."
 features = []
 
-# cargo-machete false-positive 予防 (canonical [[reference_alice_ci_canonical_template]] 罠 #3)
+# cargo-machete の誤検出を防ぐ
 [package.metadata.cargo-machete]
 ignored = ["libfuzzer-sys"]
 
