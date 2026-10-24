@@ -1,10 +1,11 @@
 [package]
 name = "alice-signal"
+publish = false
 version = "1.5.0"
 edition = "2021"
 rust-version = "1.87"  # `is_multiple_of` (1.87)、CI msrv job で実 compile
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
-license = "MIT OR Apache-2.0"
+license = "LicenseRef-Proprietary"
 repository = "https://github.com/ext-sakamoro/ALICE-Signal"
 readme = "README.md"
 keywords = ["dsp", "fft", "filter", "wavelet", "gnss"]
