@@ -2,9 +2,9 @@
 # https://embarkstudios.github.io/cargo-deny/
 #
 # 標準の CI の型
-# ALICE-SDF v1.7.7 (commit 52d26f9) の deny.toml を ALICE-Codec / ALICE-Sync 経由で ALICE-Signal 用に調整 (MIT OR Apache-2.0、AGPL 例外不要)
+# ALICE-SDF v1.7.7 (commit 52d26f9) の deny.toml を ALICE-Codec / ALICE-Sync 経由で ALICE-Signal 用に調整
 #
-# ALICE-Signal 自体は MIT OR Apache-2.0 (自身の license の例外が要る)
+# ALICE-Signal 自体は LicenseRef-Proprietary (自身の license の例外が要る)
 # sibling stubs (alice-ml/alice-db/alice-crypto/alice-cache) は alice-stubs action で
 # "MIT OR Apache-2.0" で生成される
 
@@ -58,7 +58,7 @@ allow = [
     "CC0-1.0",
     "0BSD",
     "BSL-1.0",
-    "MPL-2.0",   # weak copyleft OK
+    "MPL-2.0",   # file 単位の license、OK
     "OpenSSL",
     # Font-related licenses (font pipeline は現状無いが将来的な transitive 予防)
     "OFL-1.1",
