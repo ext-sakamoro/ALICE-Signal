@@ -40,7 +40,11 @@ fn a_reused_plan_gives_the_bits_of_fft_and_ifft() {
             let mut back_once = once.clone();
             ifft(&mut back_once);
             plan.inverse(&mut planned);
-            assert_eq!(bits(&planned), bits(&back_once), "inverse n {n} salt {salt}");
+            assert_eq!(
+                bits(&planned),
+                bits(&back_once),
+                "inverse n {n} salt {salt}"
+            );
             compared += 1;
         }
     }
