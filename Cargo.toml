@@ -16,4 +16,7 @@ description = "Pure Rust digital signal processing: FFT, FIR/IIR filters, wavele
 crate-type = ["rlib"]
 
 [dependencies]
+# sin / cos / log10 / atan without the platform libm, so every output has the same bits on every
+# target
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "2d01c63ff0849cf0ab82eafb89f87f1b729bd2a8", version = "0.5.2" }
 ed25519-dalek = "2"

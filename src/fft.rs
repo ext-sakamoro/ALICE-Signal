@@ -35,22 +35,29 @@ pub fn fft(buf: &mut [Complex]) {
         }
     }
 
+    // Twiddle factors w_n^k = e^{−2πik/n}, k < n/2, each computed directly from its angle with
+    // `alice_det_math` (no recurrence: a product chain accumulates rounding along a stage, and
+    // the platform sin / cos differ in the last bits across targets). Stage `len` uses every
+    // (n / len)-th entry.
+    let twiddles: Vec<Complex> = (0..n / 2)
+        .map(|k| {
+            let (s, c) = alice_det_math::sin_cos64(-2.0 * PI * k as f64 / n as f64);
+            Complex::new(c, s)
+        })
+        .collect();
+
     // Butterfly stages
     let mut len = 2;
     while len <= n {
         let half = len / 2;
-        let angle = -2.0 * PI / len as f64;
-        let wn = Complex::from_polar(1.0, angle);
-
+        let stride = n / len;
         let mut start = 0;
         while start < n {
-            let mut w = Complex::new(1.0, 0.0);
             for k in 0..half {
                 let u = buf[start + k];
-                let t = w * buf[start + k + half];
+                let t = twiddles[k * stride] * buf[start + k + half];
                 buf[start + k] = u + t;
                 buf[start + k + half] = u - t;
-                w = w * wn;
             }
             start += len;
         }

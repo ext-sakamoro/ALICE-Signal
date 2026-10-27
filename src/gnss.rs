@@ -204,7 +204,8 @@ pub fn estimate_cn0(i_samples: &[f64], q_samples: &[f64], cfg: Cn0Config) -> Opt
         return None;
     }
     let ratio = (np - 1.0) / (m_f - np);
-    let cn0_db_hz = 10.0 * ratio.log10() - 10.0 * cfg.coherent_integration_s.log10();
+    let cn0_db_hz = 10.0 * alice_det_math::log10_64(ratio)
+        - 10.0 * alice_det_math::log10_64(cfg.coherent_integration_s);
     Some(cn0_db_hz)
 }
 

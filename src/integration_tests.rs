@@ -1,6 +1,9 @@
 //! Integration tests.
 
+// test signals use the platform libm on purpose (an independent source); the outputs they check
+// are compared with tolerances, the bit pins are in tests/bits_pinned.rs
 #![allow(
+    clippy::disallowed_methods,
     clippy::wildcard_imports,
     clippy::too_many_lines,
     clippy::unwrap_used,

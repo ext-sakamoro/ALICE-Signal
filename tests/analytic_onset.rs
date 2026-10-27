@@ -13,6 +13,11 @@
 //! - tempo is a property of the sound, so it cannot change when the sample rate
 //!   or the amplitude changes
 
+// test signals and closed-form references use the platform libm on purpose (an independent
+// source); the outputs they check are compared with tolerances, the bit pins are in
+// tests/bits_pinned.rs
+#![allow(clippy::disallowed_methods)]
+
 use alice_signal::onset::{estimate_tempo, pick_onsets, spectral_flux, OnsetConfig, OnsetError};
 use core::f64::consts::TAU;
 

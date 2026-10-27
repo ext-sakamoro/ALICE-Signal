@@ -13,7 +13,7 @@ pub fn hamming(n: usize) -> Vec<f64> {
     }
     let m = (n - 1) as f64;
     (0..n)
-        .map(|i| 0.46f64.mul_add(-(2.0 * PI * i as f64 / m).cos(), 0.54))
+        .map(|i| 0.46f64.mul_add(-alice_det_math::cos64(2.0 * PI * i as f64 / m), 0.54))
         .collect()
 }
 
@@ -25,7 +25,7 @@ pub fn hanning(n: usize) -> Vec<f64> {
     }
     let m = (n - 1) as f64;
     (0..n)
-        .map(|i| 0.5 * (1.0 - (2.0 * PI * i as f64 / m).cos()))
+        .map(|i| 0.5 * (1.0 - alice_det_math::cos64(2.0 * PI * i as f64 / m)))
         .collect()
 }
 
@@ -40,8 +40,8 @@ pub fn blackman(n: usize) -> Vec<f64> {
         .map(|i| {
             let x = i as f64;
             0.08f64.mul_add(
-                (4.0 * PI * x / m).cos(),
-                0.5f64.mul_add(-(2.0 * PI * x / m).cos(), 0.42),
+                alice_det_math::cos64(4.0 * PI * x / m),
+                0.5f64.mul_add(-alice_det_math::cos64(2.0 * PI * x / m), 0.42),
             )
         })
         .collect()

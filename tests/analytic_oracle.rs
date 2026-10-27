@@ -29,6 +29,10 @@
 //!   three-valued correlation {−65, −1, 63}/1023, balance 512/511,
 //!   NWPR C/N0 = 10 log10(A²/(2σ²)) − 10 log10(T)
 
+// test signals and closed-form references use the platform libm on purpose (an independent
+// source); the outputs they check are compared with tolerances, the bit pins are in
+// tests/bits_pinned.rs
+#![allow(clippy::disallowed_methods)]
 #![allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,

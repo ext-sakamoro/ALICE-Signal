@@ -30,7 +30,7 @@ pub fn fir_lowpass(order: usize, cutoff: f64) -> Vec<f64> {
             let sinc = if n.abs() < 1e-12 {
                 wc / PI
             } else {
-                (wc * n).sin() / (PI * n)
+                alice_det_math::sin64(wc * n) / (PI * n)
             };
             sinc * win[i]
         })

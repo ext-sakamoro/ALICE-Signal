@@ -68,7 +68,7 @@ pub fn clock_jump_score(delta_bias_s: f64, dt_s: f64) -> f64 {
     } else if drift >= 1e-4 {
         1.0
     } else {
-        f64::midpoint(drift.log10(), 6.0)
+        f64::midpoint(alice_det_math::log10_64(drift), 6.0)
     }
 }
 
@@ -172,7 +172,7 @@ impl Detector {
             let dx = pos_ecef_m[0] - prev[0];
             let dy = pos_ecef_m[1] - prev[1];
             let dz = pos_ecef_m[2] - prev[2];
-            let delta = dx.hypot(dy).hypot(dz);
+            let delta = crate::complex::hypot(crate::complex::hypot(dx, dy), dz);
             position_jump_score(delta, dt, self.v_max_m_s)
         });
         let sat_score = satellite_count_score(tracked_satellites);

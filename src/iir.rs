@@ -23,8 +23,8 @@ impl Biquad {
     #[must_use]
     pub fn lowpass(fc: f64, q: f64) -> Self {
         let w0 = PI * fc;
-        let alpha = w0.sin() / (2.0 * q);
-        let cos_w0 = w0.cos();
+        let (sin_w0, cos_w0) = alice_det_math::sin_cos64(w0);
+        let alpha = sin_w0 / (2.0 * q);
         let a0 = 1.0 + alpha;
         Self {
             b0: ((1.0 - cos_w0) / 2.0) / a0,
@@ -39,8 +39,8 @@ impl Biquad {
     #[must_use]
     pub fn highpass(fc: f64, q: f64) -> Self {
         let w0 = PI * fc;
-        let alpha = w0.sin() / (2.0 * q);
-        let cos_w0 = w0.cos();
+        let (sin_w0, cos_w0) = alice_det_math::sin_cos64(w0);
+        let alpha = sin_w0 / (2.0 * q);
         let a0 = 1.0 + alpha;
         Self {
             b0: f64::midpoint(1.0, cos_w0) / a0,
@@ -55,8 +55,8 @@ impl Biquad {
     #[must_use]
     pub fn bandpass(fc: f64, q: f64) -> Self {
         let w0 = PI * fc;
-        let alpha = w0.sin() / (2.0 * q);
-        let cos_w0 = w0.cos();
+        let (sin_w0, cos_w0) = alice_det_math::sin_cos64(w0);
+        let alpha = sin_w0 / (2.0 * q);
         let a0 = 1.0 + alpha;
         Self {
             b0: alpha / a0,

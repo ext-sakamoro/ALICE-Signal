@@ -2,11 +2,14 @@
 
 # ALICE-Signal
 
-Pure Rust digital signal processing library for the ALICE ecosystem. Zero external dependencies.
+Pure Rust digital signal processing library for the ALICE ecosystem. Transcendental functions come from
+`alice-det-math`, so every output has the same bits on every target; `ed25519-dalek` backs batch
+signature verification.
 
 ## Features
 
-- **FFT** -- Cooley-Tukey radix-2 FFT and inverse FFT
+- **FFT** -- Cooley-Tukey radix-2 FFT and inverse FFT; each twiddle factor is computed directly from its
+  angle, so the error stays within a few `ε · log₂ n · ‖x‖`
 - **FIR Filters** -- Windowed-sinc design for lowpass and highpass filters
 - **IIR Filters** -- Biquad filters (lowpass, highpass, bandpass) with configurable cutoff and Q factor
 - **Wavelet Transforms** -- Haar (single-level and multi-level) and Daubechies-4 (forward/inverse)

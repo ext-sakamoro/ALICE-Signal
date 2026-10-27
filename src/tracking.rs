@@ -23,7 +23,7 @@ pub fn pll_costas_discriminator(prompt_i: f64, prompt_q: f64) -> f64 {
         // Avoid division by zero at exactly π/2 boundary.
         return prompt_q.signum() * core::f64::consts::FRAC_PI_2;
     }
-    (prompt_q / prompt_i).atan()
+    alice_det_math::atan64(prompt_q / prompt_i)
 }
 
 /// `FLL` cross-product frequency discriminator in Hz.
@@ -42,7 +42,7 @@ pub fn fll_cross_product_discriminator(
     }
     let cross = prompt_i_1 * prompt_q_2 - prompt_q_1 * prompt_i_2;
     let dot = prompt_i_1 * prompt_i_2 + prompt_q_1 * prompt_q_2;
-    let phase = cross.atan2(dot);
+    let phase = alice_det_math::atan2_64(cross, dot);
     phase / (2.0 * core::f64::consts::PI * dt)
 }
 
