@@ -86,6 +86,11 @@ impl std::ops::Mul<f64> for Complex {
 
 /// `√(a² + b²)` without overflow or underflow in the intermediate squares, from IEEE operations
 /// only (the same bits on every target, unlike the platform `hypot`).
+///
+/// This is a provisional home: a deterministic f64 `hypot` belongs with the other transcendental
+/// functions in `alice-det-math`. When it is added there with this exact algorithm, this function
+/// will call it, and the bits pinned in `tests/bits_pinned.rs` check that nothing changed
+/// (key `detmath hypot64`).
 #[must_use]
 pub fn hypot(a: f64, b: f64) -> f64 {
     let (x, y) = (a.abs(), b.abs());
