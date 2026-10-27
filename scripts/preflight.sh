@@ -6,7 +6,7 @@
 # Run `--quick` before every push.
 #
 # usage: scripts/preflight.sh [--quick]   (--quick skips the test / bench suites)
-# generator rev 53b5498bfca8e6d099032eaee5ccb99ec580b7b3
+# generator rev 4ad5078cba364f9e400d8847944b7a584494f7a7
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # --- heavy slot (begin) ---
@@ -235,7 +235,30 @@ heavy_slot_watch() {
 }
 # --- heavy slot (end) ---
 heavy_slot_acquire "$(basename "$PWD")" preflight || exit 1
-trap heavy_slot_release EXIT
+gh_files=$(mktemp -d)
+gh_local=0
+[ -z "${GITHUB_ENV:-}" ] && gh_local=1
+export GITHUB_OUTPUT="${GITHUB_OUTPUT:-$gh_files/output}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-$gh_files/summary}"
+export RUNNER_TEMP="${RUNNER_TEMP:-$gh_files/runner-temp}"
+mkdir -p "$RUNNER_TEMP"
+trap 'heavy_slot_release; rm -rf "$gh_files"' EXIT
+# gh_step <job>: this job's $GITHUB_ENV / $GITHUB_PATH, with what its earlier steps wrote loaded
+gh_step() {
+  [ "$gh_local" = 1 ] || return 0
+  export GITHUB_ENV="$gh_files/$1.env" GITHUB_PATH="$gh_files/$1.path"
+  touch "$GITHUB_ENV" "$GITHUB_PATH"
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      '') ;;
+      *'<<'*) echo "preflight: a multi-line \$GITHUB_ENV value is not reproduced here: $line" >&2; return 1 ;;
+      [A-Za-z_]*=*) export "${line%%=*}=${line#*=}" ;;
+      *) echo "preflight: not a NAME=value line in \$GITHUB_ENV: $line" >&2; return 1 ;;
+    esac
+  done < "$GITHUB_ENV"
+  while IFS= read -r line || [ -n "$line" ]; do [ -n "$line" ] && PATH="$line:$PATH"; done < "$GITHUB_PATH"
+  export PATH
+}
 heavy_slot_cap_ok || exit 2
 heavy_slot_watch "$$" >/dev/null &
 
@@ -253,6 +276,7 @@ has_toolchain() { grep -q "^$1" <<<"$(rustup toolchain list)"; }
 #   - security-audit.yml:changes:decide (reads AFTER, BEFORE, CREATED, EVENT, FORCED, PR_BASE, PR_HEAD, a value only the runner has)
 #   - security-audit.yml:audit:Install cargo-audit (needs network / runner-only)
 #   - security-audit.yml:deny:Install cargo-deny (needs network / runner-only)
+#   - security-audit.yml:package-integrity:展開して隔離 build (needs network / runner-only)
 #   - security-audit.yml:gate:gate (reads NEEDS, a value only the runner has)
 #   - fuzz.yml:changes:decide (reads AFTER, BEFORE, CREATED, EVENT, FORCED, PR_BASE, PR_HEAD, a value only the runner has)
 #   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_dsp] (needs network / runner-only)
@@ -276,28 +300,51 @@ need cargo-machete "cargo install cargo-machete --locked"
 has_toolchain 1.87 || { echo "missing toolchain 1.87 (rustup toolchain install 1.87)" >&2; exit 1; }
 
 step "ci.yml / fmt: run"
+(
+  gh_step ci.yml.fmt
 ( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo fmt --all -- --check )
+)
 
 step "ci.yml / clippy: run"
+(
+  gh_step ci.yml.clippy
 relint
 ( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo clippy --all-targets -- -D warnings )
+)
 
 step "ci.yml / msrv: run"
+(
+  gh_step ci.yml.msrv
 ( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo +1.87 check --lib )
+)
 
 step "ci.yml / doc: run"
+(
+  gh_step ci.yml.doc
 ( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short" RUSTDOCFLAGS="-Dwarnings"; cargo doc --no-deps )
+)
 
 step "ci.yml / actionlint: actionlint"
+(
+  gh_step ci.yml.actionlint
 actionlint .github/workflows/*.yml
+)
 
 step "security-audit.yml / deny: Run cargo deny check all"
+(
+  gh_step security-audit.yml.deny
 ( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"; cargo deny --all-features check all )
+)
 
 step "security-audit.yml / unused-deps: cargo machete"
+(
+  gh_step security-audit.yml.unused-deps
 cargo machete
+)
 
 step "security-audit.yml / stub-guard: Block panic!(STUB) in src/**"
+(
+  gh_step security-audit.yml.stub-guard
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   set -eo pipefail
@@ -314,8 +361,11 @@ step "security-audit.yml / stub-guard: Block panic!(STUB) in src/**"
   fi
   echo "✓ No panic!(STUB) in src/"
 )
+)
 
 step "security-audit.yml / stub-guard: Detect todo! / unimplemented! (informational, not blocking)"
+(
+  gh_step security-audit.yml.stub-guard
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   set -eo pipefail
@@ -333,8 +383,11 @@ step "security-audit.yml / stub-guard: Detect todo! / unimplemented! (informatio
     echo "✓ No todo!/unimplemented! markers in src/"
   fi
 )
+)
 
 step "security-audit.yml / stub-guard: Detect dbg!() residual in src/**"
+(
+  gh_step security-audit.yml.stub-guard
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   set -eo pipefail
@@ -346,8 +399,11 @@ step "security-audit.yml / stub-guard: Detect dbg!() residual in src/**"
   fi
   echo "✓ No dbg!() in src/"
 )
+)
 
 step "security-audit.yml / stub-guard: Detect TODO / FIXME / XXX / HACK (informational)"
+(
+  gh_step security-audit.yml.stub-guard
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   set -eo pipefail
@@ -359,27 +415,35 @@ step "security-audit.yml / stub-guard: Detect TODO / FIXME / XXX / HACK (informa
     echo "✓ No TODO/FIXME/XXX/HACK in src/"
   fi
 )
+)
 
-step "security-audit.yml / package-integrity: cargo package (.crate を作る)"
-( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"; cargo package --no-verify --allow-dirty )
-
-step "security-audit.yml / package-integrity: 展開して隔離 build"
+step "security-audit.yml / package-integrity: pin した git 依存の patch"
+(
+  gh_step security-audit.yml.package-integrity
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   set -euo pipefail
-  crate=$(find "${CARGO_TARGET_DIR:-target}/package" -maxdepth 1 -name '*.crate' | head -1)
-  [ -n "$crate" ] || { echo "::error::.crate が生成されていない"; exit 1; }
-  echo "packaged: $(basename "$crate") ($(du -h "$crate" | cut -f1))"
-  tmp=$(mktemp -d)
-  tar xzf "$crate" -C "$tmp"
-  cd "$tmp"/*/
-  # 親 workspace を継承すると member 扱いになり、境界を越えた file が
-  # 再び見えてしまう (検査の意味が消える) ので単独 package として build
-  printf '\n[workspace]\n' >> Cargo.toml
-  cargo check --all-features
+  python3 scripts/test_package_git_patches.py
+  python3 scripts/package_git_patches.py args > "$RUNNER_TEMP/git-patches.args"
+  echo "patch arguments: $(grep -c '^--config$' "$RUNNER_TEMP/git-patches.args" || true)"
+)
+)
+
+step "security-audit.yml / package-integrity: cargo package (.crate を作る)"
+(
+  gh_step security-audit.yml.package-integrity
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
+  set -euo pipefail
+  # read line by line (not mapfile: the preflight copy of this step also runs under bash 3.2)
+  patches=(); while IFS= read -r a; do patches+=("$a"); done < "$RUNNER_TEMP/git-patches.args"
+  cargo package --no-verify --allow-dirty "${patches[@]}"
+)
 )
 
 step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_dsp]"
+(
+  gh_step fuzz.yml.fuzz
 if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
   (
     export CARGO_TERM_COLOR="always"
@@ -389,8 +453,11 @@ if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
 else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_dsp]: nightly / cargo-fuzz not installed' >&2
 fi
+)
 
 step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_gnss]"
+(
+  gh_step fuzz.yml.fuzz
 if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
   (
     export CARGO_TERM_COLOR="always"
@@ -400,8 +467,11 @@ if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
 else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_gnss]: nightly / cargo-fuzz not installed' >&2
 fi
+)
 
 step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_kalman]"
+(
+  gh_step fuzz.yml.fuzz
 if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
   (
     export CARGO_TERM_COLOR="always"
@@ -411,21 +481,33 @@ if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
 else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_kalman]: nightly / cargo-fuzz not installed' >&2
 fi
+)
 
 if [[ $quick -eq 1 ]]; then
   echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0
 fi
 
 step "ci.yml / test: Test"
+(
+  gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo test )
+)
 
 step "ci.yml / test: Analytic oracle"
+(
+  gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo test --test analytic_oracle )
+)
 
 step "ci.yml / test: Doc tests"
+(
+  gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short"; cargo test --doc )
+)
 
 step "ci.yml / test-public-siblings: Test (lib, integration, doctests)"
+(
+  gh_step ci.yml.test-public-siblings
 (
   export CARGO_TERM_COLOR="always" CARGO_INCREMENTAL="0" RUST_BACKTRACE="short" MIN_PASSED="207"
   # the default shell has no pipefail: without it cargo's exit status is lost in the pipe
@@ -444,8 +526,11 @@ step "ci.yml / test-public-siblings: Test (lib, integration, doctests)"
     exit 1
   fi
 )
+)
 
 step "security-audit.yml / audit: Run cargo audit"
+(
+  gh_step security-audit.yml.audit
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   cargo audit --deny yanked \
@@ -456,8 +541,11 @@ step "security-audit.yml / audit: Run cargo audit"
     --ignore RUSTSEC-2026-0204 \
     --ignore RUSTSEC-2026-0235
 )
+)
 
 step "security-audit.yml / coverage: Run coverage"
+(
+  gh_step security-audit.yml.coverage
 (
   log="$(mktemp)"
   set +e
@@ -471,8 +559,11 @@ step "security-audit.yml / coverage: Run coverage"
   if [ -z "${n}" ] || [ "${n}" -eq 0 ]; then echo 'security-audit.yml / coverage: Run coverage: cargo-llvm-cov compared nothing (continue-on-error in CI; a run with no count fails)' >&2; exit 1; fi
   echo 'PREFLIGHT-INFO: security-audit.yml / coverage: Run coverage: continue-on-error in CI, '"exit ${rc}, ${n} compared" >&2
 )
+)
 
 step "security-audit.yml / semver-checks: Run cargo semver-checks"
+(
+  gh_step security-audit.yml.semver-checks
 (
   log="$(mktemp)"
   set +e
@@ -490,6 +581,7 @@ step "security-audit.yml / semver-checks: Run cargo semver-checks"
   set -e
   if [ -z "${n}" ] || [ "${n}" -eq 0 ]; then echo 'security-audit.yml / semver-checks: Run cargo semver-checks: cargo-semver-checks compared nothing (continue-on-error in CI; a run with no count fails)' >&2; exit 1; fi
   echo 'PREFLIGHT-INFO: security-audit.yml / semver-checks: Run cargo semver-checks: continue-on-error in CI, '"exit ${rc}, ${n} compared" >&2
+)
 )
 
 echo; echo "preflight OK"
