@@ -7,6 +7,7 @@
 - `fft::fft` / `fft::ifft`: 回転因子を段ごとの漸化式 (`w ← w · w_n`) でなく、1 つずつ角度から `alice_det_math::sin_cos64` で計算する 漸化式は段に沿って丸め誤差が積み上がり、DFT の定義との差が n = 16384 で `ε · log₂ n · ‖x‖` の 100 倍を超えていた (直した後は 0.5 倍未満)
 - `windows::{hanning, hamming, blackman}`、`complex::Complex::from_polar`、`fir` の sinc、`iir` の Biquad 係数、`gnss` / `spoofing` の dB 換算、`tracking` の位相: platform の libm でなく `alice-det-math` を使う (target によって最後の bit が違っていた)
 - `complex::Complex::mag`: platform の `hypot` でなく、二乗の overflow / underflow を避ける `complex::hypot` を使う
+- CI: 公開する文面の検査 (`Public text` workflow、`scripts/public_text.sh`) を追加 ALICE-Law の `scripts/public_text_check.py` を `.github/public-text-pin` の revision で取得し、SHA-256 が一致した時だけ使って、HEAD の全 tracked file (path と本文) と送った commit (message・追加行・追加 path) を読む 何も比較できなければ失敗する preflight でも走る
 
 ### Added
 
