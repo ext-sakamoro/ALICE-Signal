@@ -18,4 +18,4 @@
 
 ### Dependencies
 
-- `alice-det-math` 0.6 (git の `main`、`Cargo.lock` が commit を名指す)
+- `alice-det-math` 0.5.2 (git rev 2d01c63)
