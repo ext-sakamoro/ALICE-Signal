@@ -18,5 +18,6 @@
 
 ### Dependencies
 
+- CI (共有の写し): `scripts/package_integrity.py` と試験 (新規解決は `branch` の git 依存を lock の commit に戻してから照合)、`scripts/release_baseline.py` と試験 (ci/** の版上げは着地後の main と同じ base)、`scripts/test_id_move_check.py` を ALICE-Law 99dd3df4 が計画した bytes にした
 - CI: package の検査を共有の `scripts/package_integrity.py` に移した (`branch` で取る git 依存を同じ指定で patch し、展開した crate の Cargo.lock がこの repository の Cargo.lock の commit から取ることを確かめる) それが import する `scripts/alice_siblings_check.py` / `scripts/id_move_check.py` / `scripts/release_baseline.py` と試験、`.github/actions/alice-siblings/action.yml` を共有の bytes で持つ `scripts/package_git_patches.py` と試験は外した (`rev` で取る依存だけを扱っていた)
 - `alice-det-math` 0.6 (git の `main`、`Cargo.lock` が commit を名指す)
