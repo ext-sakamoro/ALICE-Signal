@@ -6,7 +6,7 @@
 # Run `--quick` before every push.
 #
 # usage: scripts/preflight.sh [--quick]   (--quick skips the test / bench suites)
-# generator rev 3144a7f8709082360b591d89edfb2344eeb3603d
+# generator rev e2bb3de7ed4ef9138b566d6274e62d4557010dd9
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # --- heavy slot (begin) ---
@@ -570,6 +570,7 @@ has_toolchain() { grep -q "^$1" <<<"$(rustup toolchain list)"; }
 #   - security-audit.yml:changes:decide (reads AFTER, BEFORE, CREATED, EVENT, FORCED, PR_BASE, PR_HEAD, a value only the runner has)
 #   - security-audit.yml:audit:Install cargo-audit (needs network / runner-only)
 #   - security-audit.yml:deny:Install cargo-deny (needs network / runner-only)
+#   - security-audit.yml:package-integrity:展開して隔離 build (needs network / runner-only)
 #   - security-audit.yml:gate:gate (reads NEEDS, a value only the runner has)
 #   - fuzz.yml:changes:decide (reads AFTER, BEFORE, CREATED, EVENT, FORCED, PR_BASE, PR_HEAD, a value only the runner has)
 #   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_dsp] (needs network / runner-only)
@@ -585,15 +586,12 @@ has_toolchain() { grep -q "^$1" <<<"$(rustup toolchain list)"; }
 #   - fuzz.yml:fuzz:Run fuzz target (time-boxed) [target=fuzz_kalman] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
 #   - fuzz.yml:fuzz:Report crash (informational) [target=fuzz_kalman] (its `if:` runs on what happened earlier on the runner)
 #   - fuzz.yml:gate:gate (reads NEEDS, a value only the runner has)
-#   - public-text.yml:public-text: uses actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 (an action this file cannot run)
-#   - public-text.yml:public-text:Public text (tree at HEAD, then the pushed commits) (no cargo / grep)
 
 need actionlint "brew install actionlint"
 need cargo-audit "cargo install cargo-audit --locked"
 need cargo-deny "cargo install cargo-deny --locked"
 need cargo-machete "cargo install cargo-machete --locked"
 has_toolchain 1.87 || { echo "missing toolchain 1.87 (rustup toolchain install 1.87)" >&2; exit 1; }
-command -v python >/dev/null 2>&1 || python() { python3 "$@"; }
 
 step "ci.yml / fmt: run"
 (
@@ -713,16 +711,28 @@ step "security-audit.yml / stub-guard: Detect TODO / FIXME / XXX / HACK (informa
 )
 )
 
-step "security-audit.yml / package-integrity: Package integrity (tests)"
+step "security-audit.yml / package-integrity: pin した git 依存の patch"
 (
   gh_step security-audit.yml.package-integrity
-( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"; python3 scripts/test_package_integrity.py )
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
+  set -euo pipefail
+  python3 scripts/test_package_git_patches.py
+  python3 scripts/package_git_patches.py args > "$RUNNER_TEMP/git-patches.args"
+  echo "patch arguments: $(grep -c '^--config$' "$RUNNER_TEMP/git-patches.args" || true)"
+)
 )
 
-step "security-audit.yml / package-integrity: Package integrity (package, unpack, build on its own)"
+step "security-audit.yml / package-integrity: cargo package (.crate を作る)"
 (
   gh_step security-audit.yml.package-integrity
-( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"; python3 scripts/package_integrity.py --expect-in-lock alice-det-math )
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
+  set -euo pipefail
+  # read line by line (not mapfile: the preflight copy of this step also runs under bash 3.2)
+  patches=(); while IFS= read -r a; do patches+=("$a"); done < "$RUNNER_TEMP/git-patches.args"
+  cargo package --no-verify --allow-dirty "${patches[@]}"
+)
 )
 
 step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_dsp]"
@@ -765,12 +775,6 @@ if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
 else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_kalman]: nightly / cargo-fuzz not installed' >&2
 fi
-)
-
-step "public-text.yml / public-text: Tests of scripts/public_text.sh (no network)"
-(
-  gh_step public-text.yml.public-text
-( python scripts/test_public_text.py )
 )
 
 if [[ $quick -eq 1 ]]; then
