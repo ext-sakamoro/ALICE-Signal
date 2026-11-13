@@ -10,6 +10,7 @@
 - CI: 公開する文面の検査 (`Public text` workflow、`scripts/public_text.sh`) を追加 ALICE-Law の `scripts/public_text_check.py` を `.github/public-text-pin` の revision で取得し、SHA-256 が一致した時だけ使って、HEAD の全 tracked file (path と本文) と送った commit (message・追加行・追加 path) を読む 何も比較できなければ失敗する preflight でも走る
 
 ### Added
+- CI: 他の crate の `PREVIOUS_*_SEMANTICS_IDS` は一覧全体としてだけ使える (`contains` / `len` / `is_empty`、全体を回す iterator や for、引数として丸ごと渡す) とし、添字・slice のパターン・`.first` / `next` / `take` などを拒む `scripts/upstream_previous_ids_check.py` と試験を足した (ALICE-Edge と同じ中身の共有 file) 上流は major で一覧を空にする 走査した .rs が 0 件なら失敗 (ci.yml と preflight)
 
 - `fft::FftPlan` (回転因子の表を 1 回だけ作り、同じ長さの buffer に何度でも使う、`forward` / `inverse`) `fft` / `ifft` は呼ぶたびに plan を作る形になり、出力の bit は変わらない (`tests/fft_plan.rs`、`tests/bits_pinned.rs`)
 - `complex::hypot` (IEEE 演算だけで作る `√(a² + b²)`、無限大は NaN より優先)
