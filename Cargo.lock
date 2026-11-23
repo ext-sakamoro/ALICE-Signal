@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "alice-det-math"
 version = "0.6.1"
-source = "git+https://github.com/ext-sakamoro/ALICE-DetMath?branch=main#81b301495181edb559de9e36052bd7b96646e91f"
+source = "git+https://github.com/ext-sakamoro/ALICE-DetMath?branch=main#8a46fde1e2899016b76822762439a2e9e2adad49"
 
 [[package]]
 name = "alice-signal"
