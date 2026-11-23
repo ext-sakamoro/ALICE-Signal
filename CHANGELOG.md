@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed (破壊的変更: 出力の bit が変わる)
+- CI (共有の写し): `scripts/id_move_check.py` と試験を ALICE-Law の表が移行先とする ALICE-Analytics の bytes にした
 
 - `fft::fft` / `fft::ifft`: 回転因子を段ごとの漸化式 (`w ← w · w_n`) でなく、1 つずつ角度から `alice_det_math::sin_cos64` で計算する 漸化式は段に沿って丸め誤差が積み上がり、DFT の定義との差が n = 16384 で `ε · log₂ n · ‖x‖` の 100 倍を超えていた (直した後は 0.5 倍未満)
 - `windows::{hanning, hamming, blackman}`、`complex::Complex::from_polar`、`fir` の sinc、`iir` の Biquad 係数、`gnss` / `spoofing` の dB 換算、`tracking` の位相: platform の libm でなく `alice-det-math` を使う (target によって最後の bit が違っていた)
