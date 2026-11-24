@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- workflow (ci.yml / fuzz.yml / security-audit.yml): concurrency の group を event で分ける 手動の run (workflow_dispatch) は自分の run id の group を持ち、ほかの event の run を cancel せず、cancel もされない main の run は commit ごとの group で cancel しない (cancel-in-progress は main 以外だけ)
+
 ### Changed (破壊的変更: 出力の bit が変わる)
 - CI (共有の写し): `scripts/id_move_check.py` と試験を ALICE-Law の表が移行先とする ALICE-Analytics の bytes にした
 
