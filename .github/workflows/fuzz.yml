@@ -95,7 +95,7 @@ jobs:
           workspaces: fuzz
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: cargo +1.92.0 install cargo-fuzz --version 0.13.2 --locked
 
       # build は blocking: compile error を continue-on-error で隠さない
       # (job-level continue-on-error だと fuzz target の
